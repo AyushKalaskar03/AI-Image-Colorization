@@ -1,0 +1,10 @@
+# Ignore model file (too large)
+model/colorization_release_v2.caffemodel
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Uploaded images
+static/uploads/*
+static/results/*

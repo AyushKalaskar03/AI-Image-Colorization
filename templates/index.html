@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI Image Colorizer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+  <div class="grain"></div>
+
+  <header>
+    <div class="logo">CHROMAIFY</div>
+    <p class="tagline">Breathe color into forgotten moments</p>
+  </header>
+
+  <main>
+
+    <!-- Upload Zone -->
+    <section class="upload-section" id="uploadSection">
+      <div class="drop-zone" id="dropZone">
+        <div class="drop-icon">📷</div>
+        <p class="drop-title">Drag & Drop your image here</p>
+        <p class="drop-sub">or</p>
+        <label class="browse-btn" for="fileInput">Browse File</label>
+        <input type="file" name="image" id="fileInput" accept=".jpg,.jpeg,.png,.webp,.bmp" hidden>
+        <p class="drop-hint">Supports JPG, PNG, WEBP, BMP · Max 16MB</p>
+      </div>
+
+      <!-- Preview before submit -->
+      <div class="preview-box" id="previewBox" style="display:none">
+        <img id="previewImg" alt="Preview">
+        <div class="preview-info">
+          <span id="previewName"></span>
+          <button class="change-btn" id="changeBtn">Change</button>
+        </div>
+        <button class="colorize-btn" id="colorizeBtn">
+          <span class="btn-text">✨ Colorize Image</span>
+          <span class="btn-loader" style="display:none">⏳ Processing...</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Loading State -->
+    <div class="loading-state" id="loadingState" style="display:none">
+      <div class="spinner"></div>
+      <p>AI is painting your image...</p>
+      <small>This may take a few seconds</small>
+    </div>
+
+    <!-- Error Message -->
+    <div class="error-box" id="errorBox" style="display:none">
+      <span id="errorMsg"></span>
+      <button id="retryBtn">Try Again</button>
+    </div>
+
+    <!-- Results -->
+    <section class="results" id="results" style="display:none">
+      <h2 class="results-title">Transformation Complete</h2>
+
+      <!-- Slider comparison -->
+      <div class="comparison-wrapper">
+        <div class="comparison-container" id="compContainer">
+          <img class="img-after"  id="resultImg" alt="Colorized">
+          <div class="img-before-wrap" id="beforeWrap">
+            <img class="img-before" id="originalImg" alt="Original">
+          </div>
+          <div class="slider-handle" id="sliderHandle">
+            <div class="slider-line"></div>
+            <div class="slider-circle">⟺</div>
+          </div>
+        </div>
+        <div class="slider-labels">
+          <span>Original</span>
+          <span>Colorized</span>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="action-buttons">
+        <a id="downloadBtn" class="download-btn" download>⬇ Download Colorized</a>
+        <button id="newImageBtn" class="new-btn">🔄 Colorize Another</button>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <p>Powered by OpenCV DNN · Zhang et al. (2016) Colorization Model</p>
+  </footer>
+
+<script>
+// ── Elements ──────────────────────────────────────────────
+const dropZone     = document.getElementById('dropZone');
+const fileInput    = document.getElementById('fileInput');
+const previewBox   = document.getElementById('previewBox');
+const previewImg   = document.getElementById('previewImg');
+const previewName  = document.getElementById('previewName');
+const changeBtn    = document.getElementById('changeBtn');
+const colorizeBtn  = document.getElementById('colorizeBtn');
+const loadingState = document.getElementById('loadingState');
+const errorBox     = document.getElementById('errorBox');
+const errorMsg     = document.getElementById('errorMsg');
+const retryBtn     = document.getElementById('retryBtn');
+const results      = document.getElementById('results');
+const resultImg    = document.getElementById('resultImg');
+const originalImg  = document.getElementById('originalImg');
+const downloadBtn  = document.getElementById('downloadBtn');
+const newImageBtn  = document.getElementById('newImageBtn');
+const compContainer= document.getElementById('compContainer');
+const beforeWrap   = document.getElementById('beforeWrap');
+const sliderHandle = document.getElementById('sliderHandle');
+const uploadSection= document.getElementById('uploadSection');
+
+let selectedFile = null;
+
+// ── Drag & Drop ───────────────────────────────────────────
+dropZone.addEventListener('dragover', e => {
+  e.preventDefault();
+  dropZone.classList.add('drag-over');
+});
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) handleFile(fileInput.files[0]);
+});
+changeBtn.addEventListener('click', () => {
+  selectedFile = null;
+  previewBox.style.display = 'none';
+  dropZone.style.display   = 'flex';
+  fileInput.value          = '';
+});
+
+function handleFile(file) {
+  selectedFile = file;
+  const reader = new FileReader();
+  reader.onload = e => {
+    previewImg.src = e.target.result;
+    previewName.textContent = file.name;
+    dropZone.style.display   = 'none';
+    previewBox.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+
+// ── Colorize ──────────────────────────────────────────────
+colorizeBtn.addEventListener('click', async () => {
+  if (!selectedFile) return;
+
+  const formData = new FormData();
+  formData.append('image', selectedFile);
+
+  // Show loading
+  uploadSection.style.display = 'none';
+  loadingState.style.display  = 'flex';
+  errorBox.style.display      = 'none';
+  results.style.display       = 'none';
+
+  try {
+    const response = await fetch('/colorize', { method: 'POST', body: formData });
+    const data     = await response.json();
+
+    loadingState.style.display = 'none';
+
+    if (data.error) {
+      showError(data.error);
+      return;
+    }
+
+    // Show results
+    resultImg.src   = '/' + data.output_image + '?t=' + Date.now();
+    originalImg.src = '/' + data.input_image  + '?t=' + Date.now();
+    downloadBtn.href= '/' + data.output_image;
+    downloadBtn.download = 'colorized_' + selectedFile.name;
+
+    results.style.display = 'block';
+    results.scrollIntoView({ behavior: 'smooth' });
+
+    // Reset slider to center
+    setSlider(50);
+
+  } catch (err) {
+    loadingState.style.display = 'none';
+    showError('Network error. Please try again.');
+  }
+});
+
+function showError(msg) {
+  errorMsg.textContent       = '⚠ ' + msg;
+  errorBox.style.display     = 'flex';
+  uploadSection.style.display= 'block';
+  previewBox.style.display   = 'block';
+  dropZone.style.display     = 'none';
+}
+retryBtn.addEventListener('click', () => {
+  errorBox.style.display = 'none';
+});
+
+newImageBtn.addEventListener('click', () => {
+  results.style.display      = 'none';
+  uploadSection.style.display= 'block';
+  previewBox.style.display   = 'none';
+  dropZone.style.display     = 'flex';
+  selectedFile = null;
+  fileInput.value = '';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+
+// ── Before/After Slider ───────────────────────────────────
+let isDragging = false;
+
+function setSlider(percent) {
+  beforeWrap.style.width    = percent + '%';
+  sliderHandle.style.left   = percent + '%';
+}
+
+sliderHandle.addEventListener('mousedown', () => isDragging = true);
+sliderHandle.addEventListener('touchstart', () => isDragging = true);
+
+document.addEventListener('mouseup',  () => isDragging = false);
+document.addEventListener('touchend', () => isDragging = false);
+
+document.addEventListener('mousemove', e => {
+  if (!isDragging) return;
+  updateSlider(e.clientX);
+});
+document.addEventListener('touchmove', e => {
+  if (!isDragging) return;
+  updateSlider(e.touches[0].clientX);
+});
+
+function updateSlider(clientX) {
+  const rect    = compContainer.getBoundingClientRect();
+  let   percent = ((clientX - rect.left) / rect.width) * 100;
+  percent       = Math.max(0, Math.min(100, percent));
+  setSlider(percent);
+}
+</script>
+
+</body>
+</html>
